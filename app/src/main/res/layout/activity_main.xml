@@ -45,4 +45,11 @@
         android:layout_height="wrap_content"
         android:text="是否剪裁" />
 
+    <Button
+        android:id="@+id/allAlbum"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="50dp"
+        android:text="查看所有相册" />
+
 </LinearLayout>

@@ -25,6 +25,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var isCrop: CheckBox
     private lateinit var imageView1: ImageView
     private lateinit var imageView2: ImageView
+    private lateinit var allAlbum: Button
 
     companion object {
         const val REQ_PHOTOS = 1
@@ -40,6 +41,7 @@ class MainActivity : AppCompatActivity() {
         isCrop = findViewById(R.id.isCrop)
         imageView1 = findViewById(R.id.imageView1)
         imageView2 = findViewById(R.id.imageView2)
+        allAlbum = findViewById(R.id.allAlbum)
 
         PermissionX.init(this)
             .permissions(
@@ -61,6 +63,10 @@ class MainActivity : AppCompatActivity() {
 
         photos.setOnClickListener {
             doPhotos()
+        }
+
+        allAlbum.setOnClickListener {
+            seeAllAlbum()
         }
     }
 
@@ -86,17 +92,16 @@ class MainActivity : AppCompatActivity() {
         val dirFile =
             File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).path + File.separator + dirName)
         FileUtils.createDirs(dirFile)
-        cameraFile = File(dirFile.toString(), DateTimeUtils.now() + ".jpg")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        cameraFile = File(dirFile, DateTimeUtils.now() + ".jpg")
+        outputUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             // 通过 FileProvider 创建一个 Content 类型的 Uri 文件
-            outputUri =
-                FileProvider.getUriForFile(
-                    this,
-                    AppConfig.getPackageName() + ".provider",
-                    cameraFile
-                )
+            FileProvider.getUriForFile(
+                this,
+                AppConfig.getPackageName() + ".provider",
+                cameraFile
+            )
         } else {
-            outputUri = Uri.fromFile(cameraFile)
+            Uri.fromFile(cameraFile)
         }
         // 对目标应用临时授权该 Uri 所代表的文件
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
@@ -111,7 +116,7 @@ class MainActivity : AppCompatActivity() {
      * 调用系统剪裁工具
      */
     private fun doCrop(uri: Uri) {
-        val path = getImagePathByUri(uri)
+        val path: String? = getImagePathByUri(uri)
         path?.let {
             val file = File(path)
             doCrop(file)
@@ -146,19 +151,19 @@ class MainActivity : AppCompatActivity() {
         intent.putExtra("return-data", false)
 
         //设置剪裁后保存的文件路径
-        outputUri = null
         outputUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             //适配Android10分区存储特性
-            val values = ContentValues()
-            // 设置显示的文件名
-            values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-            // 设置输出的路径信息
-            values.put(
-                MediaStore.Images.Media.RELATIVE_PATH,
-                Environment.DIRECTORY_PICTURES + File.separator + dirName
-            )
+            val values = ContentValues().apply {
+                // 设置显示的文件名
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                // 设置输出的路径信息
+                put(
+                    MediaStore.Images.Media.RELATIVE_PATH,
+                    Environment.DIRECTORY_PICTURES + File.separator + dirName
+                )
+            }
             // 生成一个新的 uri 路径
-            contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
+            contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         } else {
             val dirFile =
                 File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).path + File.separator + dirName)
@@ -244,5 +249,12 @@ class MainActivity : AppCompatActivity() {
             it.close()
         }
         return path
+    }
+
+    /**
+     * 查看所有相册
+     */
+    private fun seeAllAlbum() {
+
     }
 }
