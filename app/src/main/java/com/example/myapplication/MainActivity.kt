@@ -1,6 +1,7 @@
 package com.example.myapplication
 
 import android.Manifest
+import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Intent
 import android.database.Cursor
@@ -10,6 +11,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.Settings
+import android.util.Log
+import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.ImageView
@@ -17,6 +21,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import com.bumptech.glide.Glide
 import com.permissionx.guolindev.PermissionX
+import com.permissionx.guolindev.callback.ExplainReasonCallbackWithBeforeParam
+import com.permissionx.guolindev.callback.ForwardToSettingsCallback
+import com.permissionx.guolindev.request.ExplainScope
+import com.permissionx.guolindev.request.ForwardScope
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
@@ -47,13 +55,32 @@ class MainActivity : AppCompatActivity() {
             .permissions(
                 Manifest.permission.READ_EXTERNAL_STORAGE,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                Manifest.permission.CAMERA
+                Manifest.permission.CAMERA,
+                Manifest.permission.MANAGE_EXTERNAL_STORAGE
             )
+            .onExplainRequestReason { scope, deniedList, beforeRequest ->
+                scope.showRequestReasonDialog(
+                    deniedList,
+                    "应用需要以下权限才能继续",
+                    "允许",
+                    "拒绝"
+                )
+            }
+            .onForwardToSettings { scope, deniedList ->
+                scope.showForwardToSettingsDialog(
+                    deniedList,
+                    "请在设置中允许以下权限",
+                    "允许",
+                    "拒绝"
+                )
+            }
             .request { allGranted, grantedList, deniedList ->
                 if (allGranted) {
-                    toast(this, "All permissions are granted")
+                    toast(this, "获取所有权限")
+                    Log.e("TAG", "All permissions are granted")
                 } else {
-                    toast(this, "These permissions are denied: $deniedList")
+                    toast(this, "权限获取失败: $deniedList")
+                    Log.e("TAG", "These permissions are denied: $deniedList")
                 }
             }
 
@@ -68,6 +95,11 @@ class MainActivity : AppCompatActivity() {
         allAlbum.setOnClickListener {
             seeAllAlbum()
         }
+    }
+
+    fun open(v: View) {
+        val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+        startActivityForResult(intent, 333)
     }
 
     /**
@@ -88,11 +120,11 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent().apply {
             action = MediaStore.ACTION_IMAGE_CAPTURE
         }
-        val dirName = "IMG"
-        val dirFile =
-            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).path + File.separator + dirName)
-        FileUtils.createDirs(dirFile)
-        cameraFile = File(dirFile, DateTimeUtils.now() + ".jpg")
+        val directoryName = "IMG"
+        val directory =
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).path + File.separator + directoryName)
+        FileUtils.createDirs(directory)
+        cameraFile = File(directory, DateTimeUtils.now() + ".jpg")
         outputUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             // 通过 FileProvider 创建一个 Content 类型的 Uri 文件
             FileProvider.getUriForFile(
@@ -141,7 +173,7 @@ class MainActivity : AppCompatActivity() {
         val dirName = "CropImage"
 
         intent.setDataAndType(sourceUri, "image/*")
-        intent.putExtra("crop", true.toString()) //是否剪裁
+        intent.putExtra("crop", "true") //是否剪裁
         intent.putExtra("aspectX", 2) //剪裁宽高比例
         intent.putExtra("aspectY", 2)
 //        intent.putExtra("outputX", 100) //剪裁大小
@@ -166,7 +198,11 @@ class MainActivity : AppCompatActivity() {
             contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         } else {
             val dirFile =
-                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).path + File.separator + dirName)
+//                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).path + File.separator + dirName)
+                File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                        .toString() + File.separator + dirName
+                )
             FileUtils.createDirs(dirFile)
             Uri.fromFile(File(dirFile, fileName))
         }
@@ -179,6 +215,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        Log.e("TAG", "requestCode:$requestCode resultCode:$resultCode")
         when (requestCode) {
             REQ_PHOTOS -> {
                 data?.data?.let {
@@ -193,7 +230,7 @@ class MainActivity : AppCompatActivity() {
             }
             REQ_CAMERA -> {
                 //刷新系统相册
-                cameraFile?.let {
+                cameraFile.let {
                     MediaScannerConnection.scanFile(
                         applicationContext,
                         arrayOf(it.path),
@@ -232,22 +269,32 @@ class MainActivity : AppCompatActivity() {
     /**
      * 通过Uri获取图片path路径
      */
-    private fun getImagePathByUri(uri: Uri): String? {
+    private fun getImagePathByUri(uri: Uri?): String? {
         var path: String? = null
-        val cursor: Cursor? = contentResolver.query(
-            uri,
-            arrayOf<String>(MediaStore.Images.ImageColumns.DATA),
-            null,
-            null,
-            null
-        )
-        cursor?.let {
-            if (it.moveToFirst()) {
-                val index = it.getColumnIndex(MediaStore.Images.ImageColumns.DATA)
-                path = it.getString(index)
+        if (uri == null) return path
+
+        val scheme = uri.scheme
+        if (scheme == null) {
+            path = uri.path
+        } else if (scheme == ContentResolver.SCHEME_FILE) {
+            path = uri.path
+        } else if (scheme == ContentResolver.SCHEME_CONTENT) {
+            val cursor: Cursor? = contentResolver.query(
+                uri,
+                arrayOf<String>(MediaStore.Images.ImageColumns.DATA),
+                null,
+                null,
+                null
+            )
+            cursor?.let {
+                if (it.moveToFirst()) {
+                    val index = it.getColumnIndex(MediaStore.Images.ImageColumns.DATA)
+                    path = it.getString(index)
+                }
+                it.close()
             }
-            it.close()
         }
+
         return path
     }
 
